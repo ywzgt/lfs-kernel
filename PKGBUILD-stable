@@ -1,0 +1,215 @@
+#!/bin/bash
+
+major=6
+minor=4
+subpatch=.8
+
+pkgver=${major}.${minor}${subpatch}
+PKGbase=stable
+name=linux.$PKGbase
+LITE=yes
+cc=
+
+_pkgname=linux
+pkgbase=${_pkgname}
+pkgrel=1
+arch=("$CARCH")
+license=('GPL2')
+url='https://www.kernel.org/'
+options=('!lfs' !addep)
+makedepends=('libelf' xz 'zstd' openssl 'kmod')
+if [ "$cc" = 'clang' ]; then makedepends+=(clang); fi
+
+
+case "$LITE" in
+	yes|y)
+		source=('config-lite')
+		sha256sums=('1991d1fdbe2467d912b2cd63ced49bff6cfaf51dc9c31d1ccabc50b1361f87cb')
+		;;
+	no|n)
+		source=('config')
+		sha256sums=('993567baa31f6eb8b58e3cd2900d9233f3be93ab7978282f11f68b83b51c8e40')
+		;;
+esac
+
+source+=("https://kernel.org/pub/linux/kernel/v${major}.x/linux-${pkgver}.tar".{xz,sign} "https://github.com/zhmars/cjktty-patches/raw/master/v${major}.x/cjktty-${major}.${minor}.patch")
+sha256sums+=("$(curl -sL kernel.org/pub/linux/kernel/v${major}.x/sha256sums.asc|grep linux-${pkgver}.tar.xz|awk '{print $1}')" SKIP SKIP)
+validpgpkeys=('647F28654894E3BD457199BE38DBBDC86092693E' 'ABAF11C65A2970B130ABE3C479BE3E4300411886')
+
+
+prepare(){
+		[ -d "${_pkgname}" ] || ln -sv ${_pkgname}{-$pkgver,}
+		cd ${_pkgname}
+		make mrproper
+		make clean
+
+		local src
+		for src in "${source[@]}"; do
+			src="${src%%::*}"
+			src="${src##*/}"
+			[[ $src = *.patch ]] || continue
+			echo -e "\nApplying patch '$src'..."
+			patch -Np1 < "../$src"
+		done
+
+		case $LITE in
+			yes) cp ../config-lite .config ;;
+			no) cp ../config .config ;;
+		esac
+
+		if [ "$cc" = clang ]
+		then make CC=clang olddefconfig
+		else make olddefconfig
+		fi
+
+		case $LITE in
+			yes) diff -u ../config-lite .config > ${PKGDEST}/config-change-lite-${pkgver}.diff || true ;;
+			no) diff -u ../config .config > ${PKGDEST}/config-change-${pkgver}.diff || true ;;
+		esac
+		scripts/diffconfig .config.old .config > ${PKGDEST}/config-${pkgver}.diff
+
+		echo '  ->  '
+		echo '  ->  '
+		echo '  ->  '
+
+		make -s kernelrelease > version
+		echo "Prepared ${_pkgname} version $(<version)"
+		echo '  ->  '
+}
+
+build(){
+		cd ${_pkgname}
+		echo "pkgbase = $PKGbase"
+
+		if [ "$cc" = clang ]
+		then make CC=clang V=2
+		else make V=2
+		fi
+}
+
+_package(){
+		pkgdesc="The latest stable Linux kernel and modules"
+		depends=('kmod' 'initramfs' 'coreutils')
+		optdepends=('linux-firmware: firmware images needed for some devices' 'crda: to set the correct wireless channels of your country')
+		provides=("${_pkgname}=$pkgver" 'VIRTUALBOX-GUEST-MODULES' 'WIREGUARD-MODULE')
+
+		echo '  -> Packaging...'
+		cd ${_pkgname}
+
+		kerver="$(<version)"
+		modulesdir="$pkgdir/usr/lib/modules/${kerver}"
+
+		echo "Installing boot image..."
+		install -Dm644 "$(make -s image_name)" "$modulesdir/vmlinuz"
+
+		echo "Installing modules..."
+		make INSTALL_MOD_PATH="$pkgdir/usr" INSTALL_MOD_STRIP=1 DEPMOD=/doesnt/exist modules_install  # Suppress depmod
+
+		# 防止 更新/卸载 时 dkms 删除 nv 驱动后，pacman 不删除旧的内核目录（保留该空目录）
+		install -d "$modulesdir/kernel/drivers/video"
+
+		echo "$PKGbase" > $modulesdir/pkgbase
+		rm $modulesdir/{source,build}
+
+		# 防止 mkinitfs hook 生成 initramfs
+		echo ''>"$modulesdir/NO_initrd"
+		echo '  -> OK...'
+}
+
+_package-headers(){
+		pkgdesc="Headers and scripts for building modules for the latest stable Linux kernel"
+		depends=("${pkgname%-headers}=$pkgver")
+		provides=("${_pkgname}-headers=$pkgver")
+		if [ "$cc" = clang ]; then depends+=(clang); fi
+
+		cd ${_pkgname}
+
+		local kerver="$(<version)"
+		local builddir="$pkgdir/usr/src/${_pkgname}-$pkgver"
+		local modulesdir="$pkgdir/usr/lib/modules/${kerver}"
+
+		install -d ${modulesdir}
+
+		echo "Installing build files..."
+		install -Dt "$builddir" -m644 .config Makefile Module.symvers System.map vmlinux
+		install -Dt "$builddir/kernel" -m644 kernel/Makefile
+		install -Dt "$builddir/arch/x86" -m644 arch/x86/Makefile
+		cp -t "$builddir" -a scripts
+
+
+		if [ -e tools/objtool/objtool ]; then
+			# required when STACK_VALIDATION is enabled
+			install -Dt "$builddir/tools/objtool" tools/objtool/objtool
+		fi
+
+		echo "Installing headers..."
+		cp -t "$builddir" -a include
+		cp -t "$builddir/arch/x86" -a arch/x86/include
+		install -Dt "$builddir/arch/x86/kernel" -m644 arch/x86/kernel/asm-offsets.s
+
+		install -Dt "$builddir/drivers/md" -m644 drivers/md/*.h
+		install -Dt "$builddir/net/mac80211" -m644 net/mac80211/*.h
+
+		# https://bugs.archlinux.org/task/13146
+		install -Dt "$builddir/drivers/media/i2c" -m644 drivers/media/i2c/msp3400-driver.h
+
+		# https://bugs.archlinux.org/task/20402
+		install -Dt "$builddir/drivers/media/usb/dvb-usb" -m644 drivers/media/usb/dvb-usb/*.h
+		install -Dt "$builddir/drivers/media/dvb-frontends" -m644 drivers/media/dvb-frontends/*.h
+		install -Dt "$builddir/drivers/media/tuners" -m644 drivers/media/tuners/*.h
+
+		# https://bugs.archlinux.org/task/71392
+		install -Dt "$builddir/drivers/iio/common/hid-sensors" -m644 drivers/iio/common/hid-sensors/*.h
+
+		echo "Installing KConfig files..."
+		find . -name 'Kconfig*' -exec install -Dm644 {} "$builddir/{}" \;
+
+		echo "Removing unneeded architectures..."
+		local arch
+		for arch in "$builddir"/arch/*/; do
+			[[ $arch = */x86/ ]] && continue
+			echo "Removing $(basename "$arch")"
+			rm -r "$arch"
+		done
+
+		echo "Removing documentation..."
+		rm -r "$builddir/Documentation"
+
+		echo "Removing broken symlinks..."
+		find -L "$builddir" -type l -printf 'Removing %P\n' -delete
+
+		echo "Removing loose objects..."
+		find "$builddir" -type f -name '*.o' -printf 'Removing %P\n' -delete
+
+		echo "Stripping build tools..."
+		local file
+		while read -rd '' file; do
+		case "$(file -bi "$file")" in
+			application/x-sharedlib\;*)      # Libraries (.so)
+				strip -v $STRIP_SHARED "$file" ;;
+			application/x-archive\;*)        # Libraries (.a)
+				strip -v $STRIP_STATIC "$file" ;;
+			application/x-executable\;*)     # Binaries
+				strip -v $STRIP_BINARIES "$file" ;;
+			application/x-pie-executable\;*) # Relocatable binaries
+				strip -v $STRIP_SHARED "$file" ;;
+		esac
+		done < <(find "$builddir" -type f -perm -u+x ! -name vmlinux -print0)
+
+		echo "Stripping vmlinux..."
+		strip -v $STRIP_STATIC "$builddir/vmlinux"
+
+		echo "  -> Adding symlink..."
+		ln -s /usr/src/${_pkgname}-${pkgver} "${modulesdir}"/build
+		ln -s build "${modulesdir}"/source
+		rm $builddir/vmlinux
+		echo "  -> Done."
+}
+
+pkgname=($name{,-headers})
+for _p in "${pkgname[@]}"; do
+	eval "package_$_p() {
+		$(declare -f "_package${_p#$name}")
+		_package${_p#$name}
+	}"
+done
