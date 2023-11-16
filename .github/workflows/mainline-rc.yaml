@@ -1,4 +1,4 @@
-name: Compile linux kernel Release Candidate
+name: Release Candidate
 
 on:
   workflow_dispatch:
@@ -114,6 +114,7 @@ jobs:
         echo ''
         echo -e 'root ALL=(ALL:ALL) ALL\n%wheel ALL=(ALL:ALL) ALL\n%wheel ALL=(ALL:ALL) NOPASSWD: ALL' >sudoers
         sudo install -vm440 sudoers $LFS/etc/sudoers
+        sudo install -m644 makepkg.conf $LFS/etc/makepkg.conf
         grep 'DEST='  $LFS/etc/makepkg.conf | sed '/^#/d' >ENV
         cat ENV >docmd
         echo 'useradd builder -m -G wheel' >>docmd
@@ -134,7 +135,7 @@ jobs:
         sta_dir="$PKGDEST/.."
         echo "LOG_DIR=$(realpath $LFS/$log_dir)" >>ENV
         echo "PKG_DIR=$(realpath $LFS/$PKGDEST)" >>ENV
-        sudo cp config* -vt "$LFS/${sta_dir}"
+        sudo cp -rL dkms kernel_signing_key.pub config* -vt "$LFS/${sta_dir}"
         sudo cp -v PKGBUILD-rc "$LFS/${sta_dir}/PKGBUILD"
         echo "Start build linux-kernel ..."
         sudo chroot "rootfs" /usr/bin/env -i HOME=/root TERM="$TERM" PATH=/usr/bin:/usr/sbin /bin/bash --login -c "su builder -c 'cd ${sta_dir}; TZ=GMT LANG=zh_CN.UTF-8 LC_TIME=en_GB.UTF-8 makepkg -dC &>${log_dir}/make.log'" || { echo "::::Build failed!"; touch bld_failed; }

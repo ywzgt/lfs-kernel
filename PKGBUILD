@@ -2,16 +2,14 @@
 
 major=6
 minor=1
-subpatch=.43
+subpatch=.55
 
 pkgver=${major}.${minor}${subpatch}
-name=kernel
 PKGbase=linux
-LITE=yes
+CONF=config-lite
 cc=
 
-_pkgname=linux
-pkgbase=${_pkgname}
+pkgbase=kernel
 pkgrel=1
 arch=("$CARCH")
 license=('GPL2')
@@ -20,196 +18,133 @@ options=('!lfs' !addep)
 makedepends=('libelf' xz 'zstd' openssl 'kmod')
 if [ "$cc" = 'clang' ]; then makedepends+=(clang); fi
 
-
-case "$LITE" in
-	yes|y)
-		source=('config-lite')
-		sha256sums=('1991d1fdbe2467d912b2cd63ced49bff6cfaf51dc9c31d1ccabc50b1361f87cb')
-		;;
-	no|n)
-		source=('config')
-		sha256sums=('993567baa31f6eb8b58e3cd2900d9233f3be93ab7978282f11f68b83b51c8e40')
-		;;
-esac
-
-source+=("https://kernel.org/pub/linux/kernel/v${major}.x/linux-${pkgver}.tar".{xz,sign} "https://github.com/zhmars/cjktty-patches/raw/master/v${major}.x/cjktty-${major}.${minor}.patch")
-sha256sums+=("$(curl -sL kernel.org/pub/linux/kernel/v${major}.x/sha256sums.asc|grep linux-${pkgver}.tar.xz|awk '{print $1}')" SKIP SKIP)
-validpgpkeys=('647F28654894E3BD457199BE38DBBDC86092693E' 'ABAF11C65A2970B130ABE3C479BE3E4300411886')
+source=(
+	"${CONF}" kernel_signing_key.pub
+	"https://kernel.org/pub/linux/kernel/v${major}.x/linux-${pkgver}.tar".{xz,sign}
+	"https://github.com/zhmars/cjktty-patches/raw/master/v${major}.x/cjktty-${major}.${minor}.patch")
+sha256sums=(
+	'8d0e3ed12b67824bf42e7f94ce431ae75a3886013cbc27c503fac9f9587a8365'
+	'373c6a8661390cdd0b11b024933bf00f17f789cde25ee8029589fd71ada9b205'
+	"$(curl -sL kernel.org/pub/linux/kernel/v${major}.x/sha256sums.asc|grep linux-${pkgver}.tar.xz|awk '{print $1}')"
+	'SKIP' 'SKIP')
+validpgpkeys=(
+	'647F28654894E3BD457199BE38DBBDC86092693E'
+	'ABAF11C65A2970B130ABE3C479BE3E4300411886')
 
 
 prepare(){
-		[ -d "${_pkgname}" ] || ln -sv ${_pkgname}{-$pkgver,}
-		cd ${_pkgname}
-		make mrproper
-		make clean
+	[ -d "linux" ] || ln -s linux{-${pkgver},}
+	cd linux
+	make mrproper
+	make clean
 
-		local src
-		for src in "${source[@]}"; do
-			src="${src%%::*}"
-			src="${src##*/}"
-			[[ $src = *.patch ]] || continue
-			echo -e "\nApplying patch '$src'..."
-			patch -Np1 < "../$src"
-		done
+	local src
+	for src in "${source[@]}"; do
+		src="${src%%::*}"
+		src="${src##*/}"
+		src="${src%.xz}"
+		[[ $src = *.patch ]] || continue
+		msg2 "Applying patch '$src'..."
+		patch -Np1 < "../$src"
+	done
 
-		case $LITE in
-			yes) cp ../config-lite .config ;;
-			no) cp ../config .config ;;
-		esac
+	cp ../$CONF .config
+	if [ "$cc" = clang ]; then
+		scripts/config --disable LTO_CLANG_FULL
+		scripts/config --enable LTO_CLANG_THIN
+		make CC=clang olddefconfig
+	else
+		make olddefconfig
+	fi
 
-		if [ "$cc" = clang ]
-		then make CC=clang olddefconfig
-		else make olddefconfig
-		fi
+	diff -u ../$CONF .config > ${PKGDEST}/config-change-${pkgver}.diff || true
+	scripts/diffconfig .config.old .config > ${PKGDEST}/config-${pkgver}.diff
 
-		case $LITE in
-			yes) diff -u ../config-lite .config > ${PKGDEST}/config-change-lite-${pkgver}.diff || true ;;
-			no) diff -u ../config .config > ${PKGDEST}/config-change-${pkgver}.diff || true ;;
-		esac
-		scripts/diffconfig .config.old .config > ${PKGDEST}/config-${pkgver}.diff
-
-		echo '  ->  '
-		echo '  ->  '
-		echo '  ->  '
-
-		make -s kernelrelease > version
-		echo "Prepared ${_pkgname} version $(<version)"
-		echo '  ->  '
+	make -s kernelrelease > version
+	msg2 "Prepared linux version $(<version)"
 }
 
 build(){
-		cd ${_pkgname}
-		echo "pkgbase = $PKGbase"
+	msg2 "pkgbase = $PKGbase"
 
-		if [ "$cc" = clang ]
-		then make CC=clang V=2
-		else make V=2
-		fi
+	if [ "$cc" = clang ]; then
+		make CC=clang V=2 -C linux
+	else
+		make V=2 -C linux
+	fi
 }
 
-_package(){
-		pkgdesc="The Linux kernel and modules"
-		depends=('kmod' 'initramfs' 'coreutils')
-		optdepends=('linux-firmware: firmware images needed for some devices' 'crda: to set the correct wireless channels of your country')
-		provides=("${_pkgname}=$pkgver" 'VIRTUALBOX-GUEST-MODULES' 'WIREGUARD-MODULE')
+_pack(){
+	pkgdesc="The Linux kernel and modules"
+	depends=('kmod' 'initramfs' 'coreutils')
+	optdepends=('linux-firmware: firmware images needed for some devices')
+	provides=("linux=${pkgver}")
+	options+=('!strip')
 
-		echo '  -> Packaging...'
-		cd ${_pkgname}
+	cd linux
+	kerver="$(<version)"
+	modulesdir="$pkgdir/usr/lib/modules/${kerver}"
 
-		kerver="$(<version)"
-		modulesdir="$pkgdir/usr/lib/modules/${kerver}"
+	msg2 "Installing boot image..."
+	install -Dm644 "$(make -s image_name)" "$modulesdir/vmlinuz"
 
-		echo "Installing boot image..."
-		install -Dm644 "$(make -s image_name)" "$modulesdir/vmlinuz"
+	msg2 "Installing modules..."
+	make INSTALL_MOD_PATH="$pkgdir/usr" INSTALL_MOD_STRIP=1 DEPMOD=/doesnt/exist modules_install  # Suppress depmod
 
-		echo "Installing modules..."
-		make INSTALL_MOD_PATH="$pkgdir/usr" INSTALL_MOD_STRIP=1 DEPMOD=/doesnt/exist modules_install  # Suppress depmod
+	echo "$PKGbase"  | install -Dm644 /dev/stdin "$modulesdir/pkgbase"
+	rm $modulesdir/{source,build}
 
-		# 防止 更新/卸载 时 dkms 删除 nv 驱动后，pacman 不删除旧的内核目录（保留该空目录）
-		install -d "$modulesdir/kernel/drivers/video"
-
-		echo "$PKGbase" > $modulesdir/pkgbase
-		rm $modulesdir/{source,build}
-
-		# 防止 mkinitfs hook 生成 initramfs
-		echo ''>"$modulesdir/NO_initrd"
-		echo '  -> OK...'
+	touch "$modulesdir/no_initrd"  # 防止 mkinitfs hook 生成 initramfs
+	install -d "$modulesdir/kernel/drivers/video"  # 防止 更新/卸载 时 dkms 删除 nv 驱动后，pacman 不删除旧内核中的此目录
 }
 
-_package-headers(){
-		pkgdesc="Headers and scripts for building modules for the Linux kernel"
-		depends=("${pkgname%-headers}=$pkgver")
-		provides=("${_pkgname}-headers=$pkgver")
-		if [ "$cc" = clang ]; then depends+=(clang); fi
+_pack-headers(){
+	pkgdesc="Headers and scripts for building modules for the Linux kernel"
+	provides=("linux-headers=$pkgver")
+	if [ "$cc" = clang ]; then depends+=(clang); fi
 
-		cd ${_pkgname}
+	is_enabled() {
+		grep -q "^$1=y" include/config/auto.conf
+	}
+	cd linux
 
-		local kerver="$(<version)"
-		local builddir="$pkgdir/usr/src/${_pkgname}-$pkgver"
-		local modulesdir="$pkgdir/usr/lib/modules/${kerver}"
+	local kerver="$(<version)"
+	local builddir="$pkgdir/usr/src/linux-${kerver}"
+	local modulesdir="$pkgdir/usr/lib/modules/${kerver}"
 
-		install -d ${modulesdir}
+	msg2 "Installing build files..."
+	install -Dt "$builddir" -m644 .config Makefile Module.symvers version
+	install -Dt "$builddir/arch/x86" -m644 arch/x86/Makefile
+	local file
+	while read -rd '' file; do
+		install -Dt "$builddir/$(dirname $file)" $file
+	done < <(find scripts -type f -print0)
 
-		echo "Installing build files..."
-		install -Dt "$builddir" -m644 .config Makefile Module.symvers System.map vmlinux
-		install -Dt "$builddir/kernel" -m644 kernel/Makefile
-		install -Dt "$builddir/arch/x86" -m644 arch/x86/Makefile
-		cp -t "$builddir" -a scripts
+	if is_enabled CONFIG_OBJTOOL; then
+		msg2 "Installing objtool..."
+		install -Dt "$builddir/tools/objtool" -m755 tools/objtool/objtool
+	fi
 
+	msg2 "Installing headers..."
+	cp -t "$builddir" -a include
+	cp -t "$builddir/arch/x86" -a arch/x86/include
 
-		if [ -e tools/objtool/objtool ]; then
-			# required when STACK_VALIDATION is enabled
-			install -Dt "$builddir/tools/objtool" tools/objtool/objtool
-		fi
+	msg2 "Removing loose objects..."
+	find "$builddir" -type f -name '*.o' -printf 'Removing %P\n' -delete
 
-		echo "Installing headers..."
-		cp -t "$builddir" -a include
-		cp -t "$builddir/arch/x86" -a arch/x86/include
-		install -Dt "$builddir/arch/x86/kernel" -m644 arch/x86/kernel/asm-offsets.s
+	msg2 "Removing .gitignore file..."
+	find "$builddir" -name '.gitignore' -delete
 
-		install -Dt "$builddir/drivers/md" -m644 drivers/md/*.h
-		install -Dt "$builddir/net/mac80211" -m644 net/mac80211/*.h
-
-		# https://bugs.archlinux.org/task/13146
-		install -Dt "$builddir/drivers/media/i2c" -m644 drivers/media/i2c/msp3400-driver.h
-
-		# https://bugs.archlinux.org/task/20402
-		install -Dt "$builddir/drivers/media/usb/dvb-usb" -m644 drivers/media/usb/dvb-usb/*.h
-		install -Dt "$builddir/drivers/media/dvb-frontends" -m644 drivers/media/dvb-frontends/*.h
-		install -Dt "$builddir/drivers/media/tuners" -m644 drivers/media/tuners/*.h
-
-		# https://bugs.archlinux.org/task/71392
-		install -Dt "$builddir/drivers/iio/common/hid-sensors" -m644 drivers/iio/common/hid-sensors/*.h
-
-		echo "Installing KConfig files..."
-		find . -name 'Kconfig*' -exec install -Dm644 {} "$builddir/{}" \;
-
-		echo "Removing unneeded architectures..."
-		local arch
-		for arch in "$builddir"/arch/*/; do
-			[[ $arch = */x86/ ]] && continue
-			echo "Removing $(basename "$arch")"
-			rm -r "$arch"
-		done
-
-		echo "Removing documentation..."
-		rm -r "$builddir/Documentation"
-
-		echo "Removing broken symlinks..."
-		find -L "$builddir" -type l -printf 'Removing %P\n' -delete
-
-		echo "Removing loose objects..."
-		find "$builddir" -type f -name '*.o' -printf 'Removing %P\n' -delete
-
-		echo "Stripping build tools..."
-		local file
-		while read -rd '' file; do
-		case "$(file -bi "$file")" in
-			application/x-sharedlib\;*)      # Libraries (.so)
-				strip -v $STRIP_SHARED "$file" ;;
-			application/x-archive\;*)        # Libraries (.a)
-				strip -v $STRIP_STATIC "$file" ;;
-			application/x-executable\;*)     # Binaries
-				strip -v $STRIP_BINARIES "$file" ;;
-			application/x-pie-executable\;*) # Relocatable binaries
-				strip -v $STRIP_SHARED "$file" ;;
-		esac
-		done < <(find "$builddir" -type f -perm -u+x ! -name vmlinux -print0)
-
-		echo "Stripping vmlinux..."
-		strip -v $STRIP_STATIC "$builddir/vmlinux"
-
-		echo "  -> Adding symlink..."
-		ln -s /usr/src/${_pkgname}-${pkgver} "${modulesdir}"/build
-		ln -s build "${modulesdir}"/source
-		rm $builddir/vmlinux
-		echo "  -> Done."
+	msg2 "Adding symlink..."
+	install -d ${modulesdir}
+	ln -s /usr/src/linux-${kerver} "${modulesdir}/build"
+	ln -s build "${modulesdir}/source"
 }
 
-pkgname=($name{,-headers})
+pkgname=(${pkgbase}{,-headers})
 for _p in "${pkgname[@]}"; do
 	eval "package_$_p() {
-		$(declare -f "_package${_p#$name}")
-		_package${_p#$name}
+		$(declare -f "_pack${_p#${pkgbase}}")
+		_pack${_p#${pkgbase}}
 	}"
 done

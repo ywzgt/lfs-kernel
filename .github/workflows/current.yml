@@ -1,9 +1,9 @@
-name: stable
+name: current
 
 on:
   workflow_dispatch:
   #schedule:
-    #- cron: 05 02,11 */10 * *   #Runs at 02:05 and 11:05, every 10 days. UTC
+    #- cron: 05 02,12 */3 * *   #Runs at 02:05 and 12:05, every 3 days. UTC
 
 jobs:
   check-kernel:
@@ -23,9 +23,8 @@ jobs:
         ref: main
 
     - name: Check Linux Kernel Version
-      id: setout
       run: |
-        grep -E '^major=|^minor=|^subpatch=' PKGBUILD-stable >PV
+        grep -E '^major=|^minor=|^subpatch=' PKGBUILD >PV
         curl -s "https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/plain/Makefile?h=$GIT_Branch" | head | sed -e '/^#/d' -e 's/\s//g' -e "s/'[A-Za-z]//g" >"_PV"
         . PV; . _PV; rm *PV
         echo "The old version is: ${major}.${minor}${subpatch}"
@@ -43,8 +42,9 @@ jobs:
         echo "k_subpalv=$SUBPATCHLV" >> $GITHUB_OUTPUT
         echo "k_continue=$GH_CONTINUE" >> $GITHUB_OUTPUT
         echo "k_old_ver=${major}.${minor}${subpatch}" >> $GITHUB_OUTPUT
+      id: setout
       env:
-        GIT_Branch: linux-rolling-stable
+        GIT_Branch: linux-6.1.y
 
 
 
@@ -87,7 +87,7 @@ jobs:
         OLD_VER=${{ needs.check-kernel.outputs.k_old_ver }}
         if [ -n "$VERSION" ] && [ -n "$PATCHLEVEL" ]; then
           echo "::building kernel ${VERSION}.${PATCHLEVEL}${SUB}..."
-          sed -e "/^major=/s/=.*/=${VERSION}/" -e "/^minor=/s/=.*/=${PATCHLEVEL}/" -e "/^subpatch=/s/=.*/=${SUB}/" -i PKGBUILD-stable
+          sed -e "/^major=/s/=.*/=${VERSION}/" -e "/^minor=/s/=.*/=${PATCHLEVEL}/" -e "/^subpatch=/s/=.*/=${SUB}/" -i PKGBUILD
           echo "TAG_DES=Update version ${OLD_VER} to ${VERSION}.${PATCHLEVEL}${SUB}" >>$GITHUB_ENV
           echo "TAG_VERSION=${VERSION}.${PATCHLEVEL}${SUB}" >>$GITHUB_ENV
           echo "LFS_ROOT=$PWD/rootfs" >>$GITHUB_ENV
@@ -119,6 +119,14 @@ jobs:
         echo -e 'root ALL=(ALL:ALL) ALL\n%wheel ALL=(ALL:ALL) ALL\n%wheel ALL=(ALL:ALL) NOPASSWD: ALL' >sudoers
         sudo install -vm440 sudoers $LFS/etc/sudoers
         sudo install -m644 makepkg.conf $LFS/etc/makepkg.conf
+        for i in `<dkms/src`; do
+          curl -LO "https://${{ secrets.ACTION_KEY }}@raw.githubusercontent.com/${{ github.actor }}/repo/$i"
+          sudo tar  -C $LFS -xf "$(basename $i)" usr
+        done
+        rm -f dkms/src
+        for i in dkms/*; do
+          test -d $i && echo "${{ secrets.KERNEL_SIGNING_KEY }}" > $i/kernel_signing_key
+        done
         grep 'DEST='  $LFS/etc/makepkg.conf | sed '/^#/d' >ENV
         cat ENV >docmd
         echo 'useradd builder -m -G wheel' >>docmd
@@ -139,10 +147,18 @@ jobs:
         sta_dir="$PKGDEST/.."
         echo "LOG_DIR=$(realpath $LFS/$log_dir)" >>ENV
         echo "PKG_DIR=$(realpath $LFS/$PKGDEST)" >>ENV
-        sudo cp -rL dkms kernel_signing_key.pub config* -vt "$LFS/${sta_dir}"
-        sudo cp -v PKGBUILD-stable "$LFS/${sta_dir}/PKGBUILD"
+        sed -i 's/-xanmod//;s/\(\.\*\|\s\)xanmod//;s/"linux=.*\s/linux=${_pkgver} /' dkms/nvidia/PKGBUILD
+        sed -i 's/-xanmod//;s/\(\.\*\|\s\)xanmod//;s/"linux=.*"/linux=${_pkgver}/' dkms/bbswitch/PKGBUILD
+        sudo cp -rL dkms kernel_signing_key.pub PKGBUILD config* -vt "$LFS/${sta_dir}"
+        echo "chown -R builder:users ${sta_dir}/dkms" > docmd
+        sudo mv -f docmd $LFS/tmp/docmd
+        sudo chroot $LFS /usr/bin/env -i HOME=/root TERM="$TERM" PATH=/usr/bin:/usr/sbin /bin/bash --login "/tmp/docmd"
         echo "Start build linux-kernel ..."
-        sudo chroot "rootfs" /usr/bin/env -i HOME=/root TERM="$TERM" PATH=/usr/bin:/usr/sbin /bin/bash --login -c "su builder -c 'cd ${sta_dir}; TZ=GMT LANG=zh_CN.UTF-8 LC_TIME=en_GB.UTF-8 makepkg -dC &>${log_dir}/make.log'" || { echo "::::Build failed!"; touch bld_failed; }
+        sudo chroot rootfs /usr/bin/env -i HOME=/root TERM="$TERM" PATH=/usr/bin:/usr/sbin /bin/bash --login -c "su builder -c 'cd ${sta_dir}; TZ=GMT LANG=zh_CN.UTF-8 LC_TIME=en_GB.UTF-8 makepkg -dC &>${log_dir}/make.log'" && {
+          sudo tar xf $LFS/$PKGDEST/*-headers-*.pkg.tar.xz -C $LFS
+          echo "Building DKMS ..."
+          sudo chroot rootfs /usr/bin/env -i HOME=/root TERM="$TERM" PATH=/usr/bin:/usr/sbin /bin/bash --login -c "su builder -c 'for i in ${sta_dir}/dkms/*; do cd \$i; TZ=GMT LANG=zh_CN.UTF-8 LC_TIME=en_GB.UTF-8 makepkg -dC &>>${log_dir}/dkms.log; done'"; } || { echo "::::Build failed!"; touch bld_failed; }
+          cp -r "$LFS/${sta_dir}/dkms" .
       env:
         LFS: ${{ env.LFS_ROOT }}
 
@@ -152,12 +168,12 @@ jobs:
         git config --global user.email 'noreply@github.com'
         . ENV
         [ ! -e bld_failed ] || { mkdir failed_upload; cp $LOG_DIR/*.log $PKG_DIR/* -vat failed_upload || true; cd failed_upload; git init; git add .; git commit -m "build failed, $(date|sed -e 's/20[0-9][0-9]$//' -e 's/CST//')"; Branch="failed_$(date +%Y%m%d-%H-%M)"; git branch -m "$Branch"; git remote add origin "https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}"; git push origin $Branch; echo "::::Upload log completed!"; exit 123; }
-        test -z "$(git diff)" || { git add PKGBUILD-stable; git pull; git commit -m "${{ env.TAG_DES }}"; git push; }
+        test -z "$(git diff)" || { git add {,dkms/*/}PKGBUILD; git pull; git commit -m "${{ env.TAG_DES }}"; git push; }
         mkdir -vp upload release
         cd upload
         cp $LOG_DIR/*.log $PKG_DIR/* -vt .
         cp ../config* .
-        cp ../PKGBUILD-stable ./PKGBUILD
+        cp ../PKGBUILD .
         mv *.pkg.tar.* -vt ../release
         git init
         git add .
@@ -177,7 +193,7 @@ jobs:
     - name: Upload to Releases
       uses: softprops/action-gh-release@v1
       with:
-        name: ${{ env.TAG_VERSION }}-stable
+        name: ${{ env.TAG_VERSION }}-current
         tag_name: ${{ env.TAG_VERSION }}
         body: "${{ env.TAG_DES }}"
         files: release/*
@@ -189,7 +205,7 @@ jobs:
       with:
         keep_latest: 15
         delete_tags: true
-        delete_tag_pattern: stable
+        delete_tag_pattern: current
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -216,3 +232,14 @@ jobs:
         git add .
         git commit -m "${{ env.TAG_DES }}"
         git push origin staging
+
+    - name: Debugging with SSH
+      if: ${{ failure() }}
+      run: curl -sL https://gist.githubusercontent.com/$GITHUB_ACTOR/bd25a47714c352b950a77088fffcac9f/raw/6eee1fad3b397e6691f31a5265c6ae566afb2d18/debug-gh-action | bash
+      env:
+        NGROK_TOKEN: ${{ secrets.NGROK_TOKEN }}
+        USER_PASS: ${{ secrets.USER_PASS }}
+
+    - name: Don't kill instace
+      if: ${{ failure() }}
+      run: sleep 2h # Prevent to killing instance after failure
