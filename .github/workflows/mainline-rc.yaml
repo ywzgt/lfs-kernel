@@ -152,8 +152,8 @@ jobs:
         mkdir -vp upload release
         cd upload
         cp $LOG_DIR/*.log $PKG_DIR/* -vt .
-        cp ../config* .
-        cp ../PKGBUILD-rc .
+        cp ../$(grep '^CONF=' ../PKGBUILD-rc|sed 's/CONF=\|\s//g') .
+        cp ../PKGBUILD-rc ./PKGBUILD
         mv *.pkg.tar.* -vt ../release
         git init
         git add .

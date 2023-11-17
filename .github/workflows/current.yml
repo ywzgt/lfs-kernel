@@ -24,6 +24,9 @@ jobs:
 
     - name: Check Linux Kernel Version
       run: |
+        echo "6.1.y 的 xanmod 如果还在维护，那么就不要使用这个，tag_name 冲突！"
+        exit 123
+
         grep -E '^major=|^minor=|^subpatch=' PKGBUILD >PV
         curl -s "https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/plain/Makefile?h=$GIT_Branch" | head | sed -e '/^#/d' -e 's/\s//g' -e "s/'[A-Za-z]//g" >"_PV"
         . PV; . _PV; rm *PV
@@ -147,8 +150,11 @@ jobs:
         sta_dir="$PKGDEST/.."
         echo "LOG_DIR=$(realpath $LFS/$log_dir)" >>ENV
         echo "PKG_DIR=$(realpath $LFS/$PKGDEST)" >>ENV
-        sed -i 's/-xanmod//;s/\(\.\*\|\s\)xanmod//;s/"linux=.*\s/linux=${_pkgver} /' dkms/nvidia/PKGBUILD
-        sed -i 's/-xanmod//;s/\(\.\*\|\s\)xanmod//;s/"linux=.*"/linux=${_pkgver}/' dkms/bbswitch/PKGBUILD
+        echo "6.1.y 的 xanmod 如果还在维护，那么就不要使用这个，tag_name 冲突！"
+        sudo poweroff
+        exit 123
+        # sed -i 's/-xanmod//;s/\(\.\*\|\s\)xanmod//;s/"linux=.*\s/linux=${_pkgver} /' dkms/nvidia/PKGBUILD
+        # sed -i 's/-xanmod//;s/\(\.\*\|\s\)xanmod//;s/"linux=.*"/linux=${_pkgver}/' dkms/bbswitch/PKGBUILD
         sudo cp -rL dkms kernel_signing_key.pub PKGBUILD config* -vt "$LFS/${sta_dir}"
         echo "chown -R builder:users ${sta_dir}/dkms" > docmd
         sudo mv -f docmd $LFS/tmp/docmd
@@ -172,7 +178,7 @@ jobs:
         mkdir -vp upload release
         cd upload
         cp $LOG_DIR/*.log $PKG_DIR/* -vt .
-        cp ../config* .
+        cp ../$(grep '^CONF=' ../PKGBUILD|sed 's/CONF=\|\s//g') .
         cp ../PKGBUILD .
         mv *.pkg.tar.* -vt ../release
         git init

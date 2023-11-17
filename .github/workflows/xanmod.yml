@@ -171,8 +171,8 @@ jobs:
         mkdir -vp upload release
         cd upload
         cp $LOG_DIR/*.log $PKG_DIR/* -vt .
-        cp ../config* .
-        cp ../PKGBUILD-xanmod .
+        cp ../$(grep '^CONF=' ../PKGBUILD-xanmod|sed 's/CONF=\|\s//g') .
+        cp ../PKGBUILD-xanmod ./PKGBUILD
         mv *.pkg.tar.* -vt ../release
         git init
         git add .
