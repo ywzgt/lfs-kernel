@@ -188,7 +188,7 @@ _pack-headers(){
 	install -d ${modulesdir}
 	ln -s /usr/src/linux-${kerver} "${modulesdir}/build"
 	ln -s build "${modulesdir}/source"
-	rm $builddir/vmlinux
+	rm -f $builddir/vmlinux
 }
 
 pkgname=(${pkgbase}{,-headers})

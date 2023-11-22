@@ -3,7 +3,7 @@ name: xanmod
 on:
   workflow_dispatch:
   schedule:
-    - cron: 05 02,12 */3 * *   #Runs at 02:05 and 12:05, every 3 days. UTC
+    - cron: 05 12 */3 * *   #Runs at 12:05, every 3 days. UTC
 
 jobs:
   check-kernel:
@@ -200,11 +200,11 @@ jobs:
         prerelease: false
 
     - name: Remove old pre Releases
-      uses: dev-drprasad/delete-older-releases@v0.2.1
+      uses: dev-drprasad/delete-older-releases@v0.3.2
       with:
         keep_latest: 15
         delete_tags: true
-        delete_tag_pattern: xanmod
+        delete_expired_data: 90
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
