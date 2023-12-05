@@ -97,7 +97,7 @@ _package(){
 	make INSTALL_MOD_PATH="$pkgdir/usr" INSTALL_MOD_STRIP=1 DEPMOD=/doesnt/exist modules_install  # Suppress depmod
 
 	echo "$PKGbase"  | install -Dm644 /dev/stdin "$modulesdir/pkgbase"
-	rm $modulesdir/{source,build}
+	rm -f $modulesdir/{source,build}
 
 	touch "$modulesdir/no_initrd"  # 防止 mkinitfs hook 生成 initramfs
 	install -d "$modulesdir/kernel/drivers/video"  # 防止 更新/卸载 时 dkms 删除 nv 驱动后，pacman 不删除旧内核中的此目录

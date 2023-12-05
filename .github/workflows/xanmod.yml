@@ -187,7 +187,7 @@ jobs:
         gpg --import sign.asc; rm sign.asc
         cd release
         for i in $(find . -type f -name '*.pkg.tar.*' ! -name '*.sig'); do gpg -vb -u ${{ secrets.SIGN_KEY_ID }} "$i"; done
-        for i in *.pkg.tar.*; do ln -sv "$i" "${i%%-[0-9]*}-$(uname -m).pkg${i##*.pkg}"; done
+        #for i in *.pkg.tar.*; do ln -sv "$i" "${i%%-[0-9]*}-$(uname -m).pkg${i##*.pkg}"; done
 
     - name: Upload to Releases
       uses: softprops/action-gh-release@v1
