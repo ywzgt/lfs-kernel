@@ -1,3 +1,3 @@
-graphics/nvidia-dkms-470.199.02-1-x86_64.pkg.tar.zst
+corelfs/zfs-dkms-2.2.2-1-any.pkg.tar.zst
 graphics/bbswitch-dkms-0.8-1-any.pkg.tar.zst
-beyondlfs/zfs-dkms-2.2.2-1-any.pkg.tar.zst
+graphics/nvidia-dkms-470.223.02-1-x86_64.pkg.tar.zst
