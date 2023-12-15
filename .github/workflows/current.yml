@@ -161,7 +161,7 @@ jobs:
         sudo chroot $LFS /usr/bin/env -i HOME=/root TERM="$TERM" PATH=/usr/bin:/usr/sbin /bin/bash --login "/tmp/docmd"
         echo "Start build linux-kernel ..."
         sudo chroot rootfs /usr/bin/env -i HOME=/root TERM="$TERM" PATH=/usr/bin:/usr/sbin /bin/bash --login -c "su builder -c 'cd ${sta_dir}; TZ=GMT LANG=zh_CN.UTF-8 LC_TIME=en_GB.UTF-8 makepkg -dC &>${log_dir}/make.log'" && {
-          sudo tar xf $LFS/$PKGDEST/*-headers-*.pkg.tar.xz -C $LFS
+          sudo tar xf $LFS/$PKGDEST/*-headers-*.pkg.tar.zst -C $LFS
           echo "Building DKMS ..."
           sudo chroot rootfs /usr/bin/env -i HOME=/root TERM="$TERM" PATH=/usr/bin:/usr/sbin /bin/bash --login -c "su builder -c 'for i in ${sta_dir}/dkms/*; do cd \$i; TZ=GMT LANG=zh_CN.UTF-8 LC_TIME=en_GB.UTF-8 makepkg -dC &>>${log_dir}/dkms.log; done'"; } || { echo "::::Build failed!"; touch bld_failed; }
           cp -r "$LFS/${sta_dir}/dkms" .
