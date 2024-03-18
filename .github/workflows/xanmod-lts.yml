@@ -1,0 +1,248 @@
+name: xanmod longterm
+
+on:
+  workflow_dispatch:
+
+jobs:
+  check-kernel:
+    runs-on: ubuntu-latest
+    outputs:
+      k_old_ver: ${{ steps.setout.outputs.k_old_ver }}
+      k_version: ${{ steps.setout.outputs.k_version }}
+      k_patchlv: ${{ steps.setout.outputs.k_patchlv }}
+      k_subpalv: ${{ steps.setout.outputs.k_subpalv }}
+      k_continue: ${{ steps.setout.outputs.k_continue }}
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 1
+        token: ${{ secrets.GITHUB_TOKEN }}
+        ref: main
+
+    - name: Check Linux Kernel Version
+      run: |
+        grep -E '^major=|^minor=|^subpatch=' PKGBUILD-xanmod-lts >PV
+        curl -s "https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/plain/Makefile?h=$GIT_Branch" | head | sed -e '/^#/d' -e 's/\s//g' -e "s/'[A-Za-z]//g" >"_PV"
+        . PV; . _PV; rm *PV
+        echo "The old version is: ${major}.${minor}${subpatch}"
+        [ -z "$SUBLEVEL" ] && SUBPATCHLV="" || SUBPATCHLV=".$SUBLEVEL"
+        [ ! "$SUBLEVEL" = "0" ] || SUBPATCHLV=""
+        if [ "${major}.${minor}${subpatch}" = "${VERSION}.${PATCHLEVEL}${SUBPATCHLV}" ]; then
+          echo -e "\e[01;31mNo update, exitjob !"
+          GH_CONTINUE=0
+        else
+          echo -e "\e[01;34mThe new version is ==> \e[01;32m${VERSION}.${PATCHLEVEL}${SUBPATCHLV}"
+          GH_CONTINUE=1
+        fi
+        korg_ver=$(curl -sL kernel.org|grep -o "https://.*/linux-${VERSION}.${PATCHLEVEL}.[0-9]\+\.tar.xz"|head -1|sed 's/^.*linux-\|.tar.xz//g')
+        if [[ $korg_ver != ${VERSION}.${PATCHLEVEL}${SUBPATCHLV} ]]; then
+            if [[ $korg_ver = ${VERSION}.${PATCHLEVEL}.* ]]; then
+                [[ -z ${korg_ver##*.} ]] || SUBPATCHLV=.${korg_ver##*.}
+            fi
+        fi
+        echo "k_version=$VERSION" >> $GITHUB_OUTPUT
+        echo "k_patchlv=$PATCHLEVEL" >> $GITHUB_OUTPUT
+        echo "k_subpalv=$SUBPATCHLV" >> $GITHUB_OUTPUT
+        echo "k_continue=$GH_CONTINUE" >> $GITHUB_OUTPUT
+        echo "k_old_ver=${major}.${minor}${subpatch}" >> $GITHUB_OUTPUT
+      id: setout
+      env:
+        GIT_Branch: linux-rolling-lts
+
+
+
+  exitjob:
+    needs: check-kernel
+    runs-on: ubuntu-latest
+    if: ${{ needs.check-kernel.outputs.k_continue != 1 }}
+    steps:
+    - name: Check
+      run: echo -e "\e[01;31mNo update, exit !"
+
+
+
+  build-kernel:
+    needs: check-kernel
+    runs-on: ubuntu-latest
+    if: ${{ needs.check-kernel.outputs.k_continue == 1 }}
+    permissions: write-all
+    steps:
+    - name: Check
+      run: |
+        echo "Processor: $(cat /proc/cpuinfo|grep processor|wc -l)"
+        cat /proc/cpuinfo|grep 'model name'|head -1
+        cat /proc/meminfo
+        echo ' '; df -Th
+        echo ' '; free -h
+
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 1
+        token: ${{ secrets.GITHUB_TOKEN }}
+        ref: main
+
+    - name: Get Linux Kernel Version
+      run: |
+        VERSION=${{ needs.check-kernel.outputs.k_version }}
+        PATCHLEVEL=${{ needs.check-kernel.outputs.k_patchlv }}
+        SUB=${{ needs.check-kernel.outputs.k_subpalv }}
+        OLD_VER=${{ needs.check-kernel.outputs.k_old_ver }}
+        if [ -n "$VERSION" ] && [ -n "$PATCHLEVEL" ]; then
+          echo "::building kernel ${VERSION}.${PATCHLEVEL}${SUB}..."
+          sed -e "/^major=/s/=.*/=${VERSION}/" -e "/^minor=/s/=.*/=${PATCHLEVEL}/" -e "/^subpatch=/s/=.*/=${SUB}/" -i PKGBUILD-xanmod-lts
+          echo "TAG_DES=Update version ${OLD_VER} to ${VERSION}.${PATCHLEVEL}${SUB}" >>$GITHUB_ENV
+          echo "TAG_VERSION=${VERSION}.${PATCHLEVEL}${SUB}-xanmod" >>$GITHUB_ENV
+          echo "LFS_ROOT=$PWD/rootfs" >>$GITHUB_ENV
+        else
+          echo -e "\e[01;31mERROR:: variable output by job.check-kernel is empty!"
+          exit 321
+        fi
+
+    - name: Preparing LFS rootfs and Setting Up the Environment
+      run: |
+        wget -nv -c https://github.com/ywzgt/alfs-sysroot/releases/latest/download/rootfs.tar.xz{,.sha256}
+        sha256sum -c rootfs.tar.xz.sha256
+        sudo mkdir -v rootfs
+        echo " -> Extracting the 'rootfs.tar.xz'..."
+        sudo tar xpf rootfs.tar.xz -C rootfs
+        echo " -> Preparing Virtual Kernel File Systems..."
+        sudo mkdir -pv $LFS/{dev,proc,sys,run,tmp}
+        sudo mount -v --bind /dev $LFS/dev
+        sudo mount -v --bind /dev/pts $LFS/dev/pts
+        sudo mount -vt proc proc $LFS/proc
+        sudo mount -vt sysfs sysfs $LFS/sys
+        sudo mount -vt tmpfs tmpfs $LFS/run
+        sudo mount -vt tmpfs tmpfs $LFS/tmp
+        if [ -h $LFS/dev/shm ]; then sudo mkdir -pv $LFS/$(readlink $LFS/dev/shm); else sudo mount -vt tmpfs -o nosuid,nodev devshm $LFS/dev/shm; fi
+        echo ''
+        sudo bash -c "echo -e 'nameserver 1.1.1.1\nnameserver 8.8.8.8' >$LFS/etc/resolv.conf"
+        cat $LFS/etc/resolv.conf
+        echo ''
+        echo -e 'root ALL=(ALL:ALL) ALL\n%wheel ALL=(ALL:ALL) ALL\n%wheel ALL=(ALL:ALL) NOPASSWD: ALL' >sudoers
+        sudo install -vm440 sudoers $LFS/etc/sudoers
+        sudo install -m644 makepkg.conf $LFS/etc/makepkg.conf
+        for i in `<dkms/src`; do
+          curl -LO "https://${{ secrets.ACTION_KEY }}@raw.githubusercontent.com/${{ github.actor }}/repo/$i"
+          sudo tar  -C $LFS -xf "$(basename $i)" usr
+        done
+        rm -f dkms/src
+        for i in dkms/*; do
+          test -d $i && echo "${{ secrets.KERNEL_SIGNING_KEY }}" > $i/kernel_signing_key
+        done
+        grep 'DEST='  $LFS/etc/makepkg.conf | sed '/^#/d' >ENV
+        cat ENV >docmd
+        echo 'useradd builder -m -G wheel' >>docmd
+        echo 'install -dvo builder $SRCDEST $PKGDEST{,/../logs}' >>docmd
+        echo 'chown -Rv builder:users $PKGDEST/..' >>docmd
+        sudo mv -v docmd $LFS/tmp/docmd
+        sudo chroot "$LFS" /usr/bin/env -i HOME=/root TERM="$TERM" PATH=/usr/bin:/usr/sbin /bin/bash --login "/tmp/docmd"
+        echo 'su builder -c "for i in /tmp/key/*.gpg; do gpg --import \$i; done"' >import_KEY
+        cp import_KEY key -avt "$LFS/tmp"
+        sudo chroot "$LFS" /usr/bin/env -i HOME=/root TERM="$TERM" PATH=/usr/bin:/usr/sbin /bin/bash --login "/tmp/import_KEY"
+      env:
+        LFS: ${{ env.LFS_ROOT }}
+
+    - name: building package
+      run: |
+        . ENV
+        log_dir="$PKGDEST/../logs"
+        sta_dir="$PKGDEST/.."
+        echo "LOG_DIR=$(realpath $LFS/$log_dir)" >>ENV
+        echo "PKG_DIR=$(realpath $LFS/$PKGDEST)" >>ENV
+        sudo cp -rL dkms kernel_signing_key.pub config* -vt "$LFS/${sta_dir}"
+        sudo cp -v PKGBUILD-xanmod-lts "$LFS/${sta_dir}/PKGBUILD"
+        sudo sed -i '/^pkgname=/s/$/-xanmod-lts/' "$LFS/${sta_dir}/dkms"/*/PKGBUILD
+        echo "chown -R builder:users ${sta_dir}/dkms" > docmd
+        sudo mv -f docmd $LFS/tmp/docmd
+        sudo chroot $LFS /usr/bin/env -i HOME=/root TERM="$TERM" PATH=/usr/bin:/usr/sbin /bin/bash --login "/tmp/docmd"
+        echo "Start build linux-kernel ..."
+        sudo chroot rootfs /usr/bin/env -i HOME=/root TERM="$TERM" PATH=/usr/bin:/usr/sbin /bin/bash --login -c "su builder -c 'cd ${sta_dir}; TZ=GMT LANG=zh_CN.UTF-8 LC_TIME=en_GB.UTF-8 makepkg -dC &>${log_dir}/make.log'" && {
+          sudo tar xf $LFS/$PKGDEST/*-headers-*.pkg.tar.zst -C $LFS
+          echo "Building DKMS ..."
+          sudo chroot rootfs /usr/bin/env -i HOME=/root TERM="$TERM" PATH=/usr/bin:/usr/sbin /bin/bash --login -c "su builder -c 'for i in ${sta_dir}/dkms/*; do cd \$i; TZ=GMT LANG=zh_CN.UTF-8 LC_TIME=en_GB.UTF-8 makepkg -dC &>>${log_dir}/dkms.log; done'"; } || { echo "::::Build failed!"; touch bld_failed; }
+        cp -r "$LFS/${sta_dir}/dkms" dkms-new
+      env:
+        LFS: ${{ env.LFS_ROOT }}
+
+    - name: Push to branch/tags
+      run: |
+        git config --global user.name 'Github-Actions'
+        git config --global user.email 'noreply@github.com'
+        . ENV
+        [ ! -e bld_failed ] || { mkdir failed_upload; cp $LOG_DIR/*.log $PKG_DIR/* -vat failed_upload || true; cd failed_upload; find . -size +100M | xargs rm -fv; git init 2>/dev/null; git add .; git commit -m "build failed, $(date|sed -e 's/20[0-9][0-9]$//' -e 's/CST//')"; Branch="failed_$(date +%Y%m%d-%H%M)"; git branch -m "$Branch"; git remote add origin "https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}"; git push origin $Branch; echo "::::Upload log completed!"; exit 123; }
+        test -z "$(git diff)" || { git add PKGBUILD-xanmod-lts; git pull origin main; git commit -m "${{ env.TAG_DES }}"; git push; }
+        mkdir -vp upload release
+        cd upload
+        cp $LOG_DIR/*.log $PKG_DIR/* -vt .
+        cp ../PKGBUILD-xanmod-lts ./PKGBUILD
+        cp ../dkms-new dkms -r; find dkms -name 'kernel_signing_key*' -delete
+        mv *.pkg.tar.* -vt ../release
+        git init 2>/dev/null
+        git add .
+        git commit -m "Created in $(TZ='Asia/Shanghai' date|sed -e 's/20[0-9][0-9]$//' -e 's/CST//')"
+        git tag "${TAG_VERSION}"
+        git remote add origin "https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}"
+        git push origin $TAG_VERSION
+
+    - name: Signing packages with gnupg
+      run: |
+        echo "${{ secrets.ACTION_SIGN_KEY }}" >sign.asc
+        gpg --import sign.asc 2>/dev/null; rm sign.asc
+        cd release
+        for i in $(find . -type f -name '*.pkg.tar.*' ! -name '*.sig'); do gpg -vb -u ${{ secrets.SIGN_KEY_ID }} "$i"; done
+        #for i in *.pkg.tar.*; do ln -sv "$i" "${i%%-[0-9]*}-$(uname -m).pkg${i##*.pkg}"; done
+
+    - name: Upload to Releases
+      uses: softprops/action-gh-release@master
+      with:
+        tag_name: ${{ env.TAG_VERSION }}
+        body: ${{ env.TAG_DES }}
+        files: release/*
+        fail_on_unmatched_files: true
+        prerelease: false
+
+    - name: Remove old pre Releases
+      uses: dev-drprasad/delete-older-releases@master
+      with:
+        keep_latest: 20
+        delete_tags: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Push to Github Repo
+      run: |
+        find release -type l -delete
+        mkdir -pv release/gh_repo{,-staging}
+        REPO_STAGING="$(date +%Y%m%d%H%M%S-%N)_staging"
+        cd release/gh_repo-staging
+        git init 2>/dev/null
+        git remote add origin "https://${{ secrets.ACTION_KEY }}@github.com/${{ github.actor }}/repo"
+        git branch -m $REPO_STAGING
+        if [[ -n $(find .. -name '*.pkg.tar*' -size +100M) ]]; then
+            echo "::The size of these files exceeds 100M:"
+            find .. -name '*.pkg.tar*' -size +100M | xargs basename
+            echo "::Skipping upload to repository! "
+            exit 0
+        fi
+        cp -v ../*.pkg.tar.* .
+        git add .
+        git commit -m "${{ env.TAG_DES }}"
+        git push origin $REPO_STAGING
+        cd ../gh_repo
+        git init 2>/dev/null
+        git remote add origin "https://${{ secrets.ACTION_KEY }}@github.com/${{ github.actor }}/repo"
+        git pull origin staging --depth=1
+        git checkout staging
+        echo "kernel" > repo_branch
+        echo "$REPO_STAGING" > repo_staging
+        git add .
+        git commit -m "${{ env.TAG_DES }}"
+        git push origin staging
+
+    - name: Setup tmate ssh session
+      if: ${{ failure() }}
+      uses: mxschmitt/action-tmate@v3
+      with:
+        limit-access-to-actor: true
