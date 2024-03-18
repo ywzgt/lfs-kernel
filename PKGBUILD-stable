@@ -2,7 +2,7 @@
 
 major=6
 minor=7
-subpatch=.6
+subpatch=.10
 
 pkgver=${major}.${minor}${subpatch}
 PKGbase=stable
