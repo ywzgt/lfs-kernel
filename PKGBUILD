@@ -20,13 +20,12 @@ if [ "$cc" = 'clang' ]; then makedepends+=(clang); fi
 
 source=(
 	"${CONF}" kernel_signing_key.pub
-	"https://kernel.org/pub/linux/kernel/v${major}.x/linux-${pkgver}.tar".{xz,sign}
-	"https://github.com/zhmars/cjktty-patches/raw/master/v${major}.x/cjktty-${major}.${minor}.patch")
+	"https://kernel.org/pub/linux/kernel/v${major}.x/linux-${pkgver}.tar".{xz,sign})
 sha256sums=(
 	'e5da4c649249cd4b726f884d1ff9e8578cb40ca4ea0917de982c30698a1e6019'
 	'71b5dddd64b9dbfb9abf6286adf17d137a6c3d260ee014e59aecbc0904f662e0'
 	"$(curl -sL kernel.org/pub/linux/kernel/v${major}.x/sha256sums.asc|grep linux-${pkgver}.tar.xz|awk '{print $1}')"
-	'SKIP' 'SKIP')
+	'SKIP')
 validpgpkeys=(
 	'647F28654894E3BD457199BE38DBBDC86092693E'
 	'ABAF11C65A2970B130ABE3C479BE3E4300411886')
