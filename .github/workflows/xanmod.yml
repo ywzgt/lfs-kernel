@@ -96,7 +96,7 @@ jobs:
         if [ -n "$VERSION" ] && [ -n "$PATCHLEVEL" ]; then
           echo "::building kernel ${VERSION}.${PATCHLEVEL}${SUB}..."
           sed -e "/^major=/s/=.*/=${VERSION}/" -e "/^minor=/s/=.*/=${PATCHLEVEL}/" -e "/^subpatch=/s/=.*/=${SUB}/" -i PKGBUILD-xanmod
-          echo "TAG_DES=Update version ${OLD_VER} to ${VERSION}.${PATCHLEVEL}${SUB}" >>$GITHUB_ENV
+          echo "TAG_DES=Update version ${OLD_VER} to ${VERSION}.${PATCHLEVEL}${SUB} xanmod" >>$GITHUB_ENV
           echo "TAG_VERSION=${VERSION}.${PATCHLEVEL}${SUB}-xanmod" >>$GITHUB_ENV
           echo "LFS_ROOT=$PWD/rootfs" >>$GITHUB_ENV
         else
