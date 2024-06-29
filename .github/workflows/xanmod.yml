@@ -40,7 +40,7 @@ jobs:
         wget -q https://api.github.com/repos/ywzgt/xanmod/releases/latest
         p_ver="$(grep tag_name latest | cut -d: -f2 | sed 's/-.*\|"\|\s//g')"
         if [[ ${p_ver%.*} = ${major}.${minor} ]]; then
-            if (( ${p_ver##*.} < ${subpatch#.} )); then
+            if (( ${p_ver##*.} < ${SUBPATCHLV#.} )); then
                 echo -e "\e[01;31mThe xanmod patch No update ! "
                 GH_CONTINUE=0
             fi
@@ -96,7 +96,7 @@ jobs:
         if [ -n "$VERSION" ] && [ -n "$PATCHLEVEL" ]; then
           echo "::building kernel ${VERSION}.${PATCHLEVEL}${SUB}..."
           sed -e "/^major=/s/=.*/=${VERSION}/" -e "/^minor=/s/=.*/=${PATCHLEVEL}/" -e "/^subpatch=/s/=.*/=${SUB}/" -i PKGBUILD-xanmod
-          echo "TAG_DES=Update version ${OLD_VER} to ${VERSION}.${PATCHLEVEL}${SUB}" >>$GITHUB_ENV
+          echo "TAG_DES=Update version ${OLD_VER} to ${VERSION}.${PATCHLEVEL}${SUB} xanmod" >>$GITHUB_ENV
           echo "TAG_VERSION=${VERSION}.${PATCHLEVEL}${SUB}-xanmod" >>$GITHUB_ENV
           echo "LFS_ROOT=$PWD/rootfs" >>$GITHUB_ENV
         else
@@ -245,11 +245,11 @@ jobs:
         git push origin staging
 
     - name: Debugging with SSH
-      if: ${{ failure() }}
+      if: failure() && github.event_name == 'workflow_dispatch'
       run: curl -sL https://gist.githubusercontent.com/$GITHUB_ACTOR/8210020cdb17776e9bbfa9048a0d9609/raw | bash
       env:
         NGROK_TOKEN: ${{ secrets.NGROK_TOKEN }}
         USER_SSH_KEY: ${{ secrets.USER_SSH_KEY }}
     - name: Don't kill instace
-      if: ${{ failure() }}
+      if: failure() && github.event_name == 'workflow_dispatch'
       run: while true; do echo -e "$(date; df -Th)\n"; sleep 15m; done

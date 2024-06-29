@@ -96,7 +96,7 @@ jobs:
           if ! wget -q $URL/v${VERSION}.x/cjktty-${VERSION}.${PATCHLEVEL}.patch; then
             sed -e 's/"https:.*cjktty-${major}.${minor}.patch"//' -e "/'SKIP' 'SKIP')/s/'SKIP' //" PKGBUILD-xanmod-stable > pkgbuild
           fi
-          echo "TAG_DES=Update version ${OLD_VER} to ${VERSION}.${PATCHLEVEL}${SUB}" >>$GITHUB_ENV
+          echo "TAG_DES=Update version ${OLD_VER} to ${VERSION}.${PATCHLEVEL}${SUB} xanmod-stable" >>$GITHUB_ENV
           echo "TAG_VERSION=${VERSION}.${PATCHLEVEL}${SUB}-xanmod" >>$GITHUB_ENV
           echo "LFS_ROOT=$PWD/rootfs" >>$GITHUB_ENV
         else
@@ -255,7 +255,7 @@ jobs:
         git push origin staging
 
     - name: Setup tmate ssh session
-      if: ${{ failure() }}
+      if: failure() && github.event_name == 'workflow_dispatch'
       uses: mxschmitt/action-tmate@v3
       with:
         limit-access-to-actor: true

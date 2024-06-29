@@ -238,11 +238,11 @@ jobs:
         git push origin staging
 
     - name: Debugging with SSH
-      if: ${{ failure() }}
+      if: failure() && github.event_name == 'workflow_dispatch'
       run: curl -sL https://gist.githubusercontent.com/$GITHUB_ACTOR/8210020cdb17776e9bbfa9048a0d9609/raw | bash
       env:
         NGROK_TOKEN: ${{ secrets.NGROK_TOKEN }}
         USER_SSH_KEY: ${{ secrets.USER_SSH_KEY }}
     - name: Don't kill instace
-      if: ${{ failure() }}
+      if: failure() && github.event_name == 'workflow_dispatch'
       run: while true; do echo -e "$(date; df -Th)\n"; sleep 15m; done
