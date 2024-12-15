@@ -22,7 +22,7 @@ source=(
 	"${CONF}" kernel_signing_key.pub
 	"https://kernel.org/pub/linux/kernel/v${major}.x/linux-${pkgver}.tar".{xz,sign})
 sha256sums=(
-	'e5da4c649249cd4b726f884d1ff9e8578cb40ca4ea0917de982c30698a1e6019'
+	'c6e3abbf8450f3f5235390237ab8ff61df1f95f3ec0f1aa7b1b6ea9912233119'
 	'71b5dddd64b9dbfb9abf6286adf17d137a6c3d260ee014e59aecbc0904f662e0'
 	"$(curl -sL kernel.org/pub/linux/kernel/v${major}.x/sha256sums.asc|grep linux-${pkgver}.tar.xz|awk '{print $1}')"
 	'SKIP')
