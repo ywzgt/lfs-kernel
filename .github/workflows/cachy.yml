@@ -160,7 +160,7 @@ jobs:
 
     - name: Upload to Releases
       if: ${{ env.TAG_VERSION != '' }}
-      uses: softprops/action-gh-release@master
+      uses: softprops/action-gh-release@v2
       with:
         tag_name: ${{ env.TAG_VERSION }}
         body: ${{ env.TAG_DES }}

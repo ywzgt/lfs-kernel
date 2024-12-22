@@ -190,7 +190,7 @@ jobs:
         #for i in *.pkg.tar.*; do ln -sv "$i" "${i%%-[0-9]*}-$(uname -m).pkg${i##*.pkg}"; done
 
     - name: Upload to Releases
-      uses: softprops/action-gh-release@master
+      uses: softprops/action-gh-release@v2
       with:
         name: ${{ env.TAG_VERSION }}-current
         tag_name: ${{ env.TAG_VERSION }}

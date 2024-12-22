@@ -196,7 +196,7 @@ jobs:
         for i in $(find . -type f -name '*.pkg.tar.*' ! -name '*.sig'); do gpg -vb -u ${{ secrets.SIGN_KEY_ID }} "$i"; done
 
     - name: Upload to Releases
-      uses: softprops/action-gh-release@master
+      uses: softprops/action-gh-release@v2
       with:
         name: ${{ env.TAG_VERSION }}-lts
         tag_name: ${{ env.TAG_VERSION }}
