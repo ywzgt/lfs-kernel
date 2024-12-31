@@ -1,6 +1,6 @@
 pkgname=zfs
 _pkgver=2.2.3
-pkgver=2.2.3.k6.1.121
+pkgver=2.2.3.k6.1.122
 pkgrel=1
 pkgdesc="Zettabyte File System Kernel modules for linux xanmod"
 arch=("$CARCH")
