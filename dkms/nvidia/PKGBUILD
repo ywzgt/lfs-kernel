@@ -1,6 +1,6 @@
 pkgname=nvidia
 _pkgver=550.90.07
-pkgver=550.90.07.k6.1.131
+pkgver=550.90.07.k6.1.132
 pkgrel=1
 pkgdesc="NVIDIA drivers for linux xanmod"
 arch=("$CARCH")
