@@ -1,8 +1,8 @@
 #!/bin/bash
 
 major=6
-minor=6
-subpatch=.30
+minor=12
+subpatch=.21
 
 pkgver=${major}.${minor}${subpatch}
 PKGbase=lts
