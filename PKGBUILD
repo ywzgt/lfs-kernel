@@ -2,7 +2,7 @@
 
 major=6
 minor=1
-subpatch=.156
+subpatch=.157
 
 pkgver=${major}.${minor}${subpatch}
 PKGbase=linux
