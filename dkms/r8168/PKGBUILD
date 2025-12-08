@@ -1,0 +1,53 @@
+pkgname=r8168
+_pkgver=8.055.00
+pkgver=$_pkgver
+pkgrel=1
+pkgdesc="A kernel module for Realtek 8168 network cards"
+arch=("$CARCH")
+url="https://www.realtek.com/Download/List?cate_id=584"
+license=('GPL')
+options=('!strip')
+conflicts=(r8168-dkms)
+makedepends=(linux-xanmod-headers "r8168-dkms=${_pkgver}")
+source=("dkms::https://github.com/dell/dkms/raw/v3.0.12/dkms.in" kernel_signing_key.pub)
+sha256sums=('SKIP' '71b5dddd64b9dbfb9abf6286adf17d137a6c3d260ee014e59aecbc0904f662e0')
+
+prepare() {
+	sed -i '/prepare_signing$/d' dkms
+	chmod 755 dkms
+}
+
+pkgver() {
+	local _kernver=$(</usr/src/linux-[0-9].*xanmod*/version)
+	printf "${_pkgver}.k${_kernver%-*}"
+}
+
+build() {
+	local _kernver=$(</usr/src/linux-[0-9].*xanmod*/version)
+	./dkms build --dkmstree "${srcdir}" -m r8168/${_pkgver} -k ${_kernver}
+	sign_mod ${_kernver} "r8168/${_pkgver}/${_kernver}/${CARCH}/module"/* || true
+}
+
+package() {
+	local _kernver=$(</usr/src/linux-[0-9].*xanmod*/version)
+	depends=("linux-xanmod=${_kernver%-*}")
+	provides=('R8168-MODULE')
+	echo "blacklist r8169" | install -Dm644 '/dev/stdin' "${pkgdir}/usr/lib/modprobe.d/r8168.conf"
+	install -Dt "${pkgdir}/usr/lib/modules/${_kernver}/extramodules" -m644 r8168/${_pkgver}/${_kernver}/${CARCH}/module/*
+	find "${pkgdir}" -name '*.ko' -exec xz -T1 {} +
+}
+
+sign_mod() {
+	local KVER="$1"; shift
+	local kernel_config="/usr/lib/modules/$KVER/build/.config"
+	local sign_file="/usr/lib/modules/$KVER/build/scripts/sign-file"
+	local sign_hash=$(grep "^CONFIG_MODULE_SIG_HASH=" "${kernel_config}" | cut -f2 -d= | sed 's/"//g')
+	local mok_signing_key="${startdir}/kernel_signing_key"
+	local mok_certificate="${srcdir}/kernel_signing_key.pub"
+
+	options=('strip') tidy_strip
+	for i in $@; do
+		msg2 "Signing module: $(basename $i)"
+		"$sign_file" "$sign_hash" "$mok_signing_key" "$mok_certificate" "$i"
+	done
+}
