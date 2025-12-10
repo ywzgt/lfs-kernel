@@ -1,6 +1,6 @@
 pkgname=r8168
 _pkgver=8.055.00
-pkgver=$_pkgver
+pkgver=8.055.00.k6.1.159
 pkgrel=1
 pkgdesc="A kernel module for Realtek 8168 network cards"
 arch=("$CARCH")

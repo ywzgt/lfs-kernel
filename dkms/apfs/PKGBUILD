@@ -1,6 +1,6 @@
 pkgname=apfs
 _pkgver=0.3.13
-pkgver=$_pkgver
+pkgver=0.3.13.k6.1.159
 pkgrel=1
 pkgdesc="APFS module for linux, with experimental write support"
 arch=("$CARCH")
