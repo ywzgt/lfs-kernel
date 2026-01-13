@@ -1,6 +1,6 @@
 pkgname=bbswitch
 _pkgver=0.8
-pkgver=0.8.k6.1.159
+pkgver=0.8.k6.1.160
 pkgrel=1
 pkgdesc="Bbswitch drivers for linux xanmod"
 arch=("$CARCH")

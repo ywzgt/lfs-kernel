@@ -2,7 +2,7 @@
 
 major=6
 minor=1
-subpatch=.159
+subpatch=.160
 
 pkgver=${major}.${minor}${subpatch}
 PKGbase=xanmod
