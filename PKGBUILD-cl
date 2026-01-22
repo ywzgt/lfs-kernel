@@ -2,7 +2,7 @@
 
 major=6
 minor=1
-subpatch=.160
+subpatch=.161
 
 pkgver=${major}.${minor}${subpatch}
 PKGbase=cl
