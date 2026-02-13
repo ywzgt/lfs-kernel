@@ -1,0 +1,53 @@
+pkgname=apfs
+_pkgver=0.3.13
+pkgver=0.3.13.k6.1.163
+pkgrel=1
+pkgdesc="APFS module for linux, with experimental write support"
+arch=("$CARCH")
+url="https://github.com/linux-apfs/linux-apfs-rw"
+license=('GPL2')
+options=('!strip')
+conflicts=(apfs-dkms)
+makedepends=(linux-headers "apfs-dkms=${_pkgver}")
+source=("dkms::https://github.com/dell/dkms/raw/v3.0.12/dkms.in" kernel_signing_key.pub)
+sha256sums=('SKIP' '71b5dddd64b9dbfb9abf6286adf17d137a6c3d260ee014e59aecbc0904f662e0')
+
+prepare() {
+	sed -i '/prepare_signing$/d' dkms
+	chmod 755 dkms
+}
+
+pkgver() {
+	local _kernver=$(</usr/src/linux-[0-9]*/version)
+	printf "${_pkgver}.k${_kernver%-*}"
+}
+
+build() {
+	local _kernver=$(</usr/src/linux-[0-9]*/version)
+	./dkms build --dkmstree "${srcdir}" -m apfs/${_pkgver} -k ${_kernver}
+	sign_mod ${_kernver} "apfs/${_pkgver}/${_kernver}/${CARCH}/module"/* || true
+}
+
+package() {
+	local _kernver=$(</usr/src/linux-[0-9]*/version)
+	provides=('APFS-MODULE')
+	depends=("linux=${_kernver%-*}")
+
+	install -Dt "${pkgdir}/usr/lib/modules/${_kernver}/extramodules" -m644 apfs/${_pkgver}/${_kernver}/${CARCH}/module/*
+	find "${pkgdir}" -name '*.ko' -exec xz -T1 {} +
+}
+
+sign_mod() {
+	local KVER="$1"; shift
+	local kernel_config="/usr/lib/modules/$KVER/build/.config"
+	local sign_file="/usr/lib/modules/$KVER/build/scripts/sign-file"
+	local sign_hash=$(grep "^CONFIG_MODULE_SIG_HASH=" "${kernel_config}" | cut -f2 -d= | sed 's/"//g')
+	local mok_signing_key="${startdir}/kernel_signing_key"
+	local mok_certificate="${srcdir}/kernel_signing_key.pub"
+
+	options=('strip') tidy_strip
+	for i in $@; do
+		msg2 "Signing module: $(basename $i)"
+		"$sign_file" "$sign_hash" "$mok_signing_key" "$mok_certificate" "$i"
+	done
+}
