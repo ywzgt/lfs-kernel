@@ -17,7 +17,7 @@ jobs:
         echo ' '; free -h
 
     - name: Checkout Repository
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
     - name: Get Linux Kernel Version
       run: |
         VER="$(curl -sL kernel.org | grep -A1 longterm: | sed -n 's/.*strong>\(.*\)<\/strong.*/\1/p' | head -1)"
