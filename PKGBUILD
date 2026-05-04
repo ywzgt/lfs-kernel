@@ -22,7 +22,7 @@ source=(
 	"${CONF}" kernel_signing_key.pub
 	"https://kernel.org/pub/linux/kernel/v${major}.x/linux-${pkgver}.tar".{xz,sign})
 sha256sums=(
-	'd9d299abc6e35ce5fe0dd42270077caf4b04f68c902ffabd0f44f270a641f8e4'
+	'657611f179378fd1b3bf8f8a71ab273ac254d72047816163a606b24136374a19'
 	'71b5dddd64b9dbfb9abf6286adf17d137a6c3d260ee014e59aecbc0904f662e0'
 	"$(curl -sL kernel.org/pub/linux/kernel/v${major}.x/sha256sums.asc|grep linux-${pkgver}.tar.xz|awk '{print $1}')"
 	'SKIP')
@@ -35,6 +35,7 @@ prepare(){
 	cd linux
 	make mrproper
 	make clean
+	sed -i "/^SEED=/s/=.*/=$(od -A n -t x8 -N 32 /dev/urandom | tr -d ' \n')/" scripts/gen-randstruct-seed.sh
 
 	local src
 	for src in "${source[@]}"; do
