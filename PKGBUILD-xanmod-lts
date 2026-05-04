@@ -23,7 +23,7 @@ source=(
 	"https://kernel.org/pub/linux/kernel/v${major}.x/linux-${major}.${minor}.tar".{xz,sign}
 	"https://downloads.sourceforge.net/project/xanmod/releases/lts/${pkgver}-xanmod1/patch-${pkgver}-xanmod1.xz")
 sha256sums=(
-	'adb6c6ad3babd496b7d60b6de3d8629c9125b0b80990470c9c8131125df20d23'
+	'ecdbae33d3207475878cd95ccecf76bb11869e904bf03c35c1e4021af8eca6a6'
 	'71b5dddd64b9dbfb9abf6286adf17d137a6c3d260ee014e59aecbc0904f662e0'
 	"$(curl -sL kernel.org/pub/linux/kernel/v${major}.x/sha256sums.asc|grep linux-${major}.${minor}.tar.xz|awk '{print $1}')"
 	'SKIP' 'SKIP')

@@ -2,7 +2,7 @@
 
 major=6
 minor=1
-subpatch=.132
+subpatch=.170
 
 pkgver=${major}.${minor}${subpatch}
 PKGbase=linux
@@ -22,7 +22,7 @@ source=(
 	"${CONF}" kernel_signing_key.pub
 	"https://kernel.org/pub/linux/kernel/v${major}.x/linux-${pkgver}.tar".{xz,sign})
 sha256sums=(
-	'657611f179378fd1b3bf8f8a71ab273ac254d72047816163a606b24136374a19'
+	'6c7d75f4261d0d3f6d66adf5e7db75257ac80ea17138f0d76a797ebc30417c6c'
 	'71b5dddd64b9dbfb9abf6286adf17d137a6c3d260ee014e59aecbc0904f662e0'
 	"$(curl -sL kernel.org/pub/linux/kernel/v${major}.x/sha256sums.asc|grep linux-${pkgver}.tar.xz|awk '{print $1}')"
 	'SKIP')
