@@ -208,6 +208,17 @@ jobs:
         git commit -m "${{ env.TAG_DES }}"
         git push origin staging
 
+    - name: Delete Linux headers pkg
+      run: rm -fv release/*-headers-*.pkg.tar.*
+    - name: Upload to Releases
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ env.TAG_VERSION }}
+        body: ${{ env.TAG_DES }}
+        files: release/*
+        fail_on_unmatched_files: true
+        prerelease: false
+
     - name: Setup tmate ssh session
       if: failure() && github.event_name == 'workflow_dispatch'
       uses: mxschmitt/action-tmate@v3

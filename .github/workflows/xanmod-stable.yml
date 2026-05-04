@@ -207,15 +207,6 @@ jobs:
         for i in $(find . -type f -name '*.pkg.tar.*' ! -name '*.sig'); do gpg -vb -u ${{ secrets.SIGN_KEY_ID }} "$i"; done
         #for i in *.pkg.tar.*; do ln -sv "$i" "${i%%-[0-9]*}-$(uname -m).pkg${i##*.pkg}"; done
 
-    - name: Upload to Releases
-      uses: softprops/action-gh-release@v2
-      with:
-        tag_name: ${{ env.TAG_VERSION }}
-        body: ${{ env.TAG_DES }}
-        files: release/*
-        fail_on_unmatched_files: true
-        prerelease: false
-
     - name: Remove old pre Releases
       uses: dev-drprasad/delete-older-releases@master
       with:
@@ -253,6 +244,17 @@ jobs:
         git add .
         git commit -m "${{ env.TAG_DES }}"
         git push origin staging
+
+    - name: Delete Linux headers pkg
+      run: rm -fv release/*-headers-*.pkg.tar.*
+    - name: Upload to Releases
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ env.TAG_VERSION }}
+        body: ${{ env.TAG_DES }}
+        files: release/*
+        fail_on_unmatched_files: true
+        prerelease: false
 
     - name: Setup tmate ssh session
       if: failure() && github.event_name == 'workflow_dispatch'
